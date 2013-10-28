@@ -1,0 +1,366 @@
+/*****************************************************************************
+ * $Source$
+ * $Author$
+ * $Date$
+ * $Revision$
+ *****************************************************************************/
+
+/**
+ * \addtogroup CkLdb
+*/
+/*@{*/
+
+/*
+Status:
+  * support processor avail bitvector
+  * support nonmigratable attrib
+  * support background load
+
+  rewritten by Gengbin Zheng to use the new load balancer database and hash table;
+      modified to recognize the nonmigratable attrib of an object 
+      by Gengbin Zheng, 7/28/2003
+    */
+
+//#include <charm++.h>
+#include <cstdio>
+#include <algorithm>
+#include "MultiCoreLB.h"
+#include <cfloat>
+
+class ProcLoadGreater {
+  public:
+    bool operator()(ProcInfo p1, ProcInfo p2) {
+      return (p1.getTotalLoad() >  p2.getTotalLoad());
+    }
+};
+
+class ObjLoadGreater {
+  public:
+    bool operator()(Vertex v1, Vertex v2) {
+      return (v1.getVertexLoad() < v2.getVertexLoad());
+    }
+};
+
+CreateLBFunc_Def(MultiCoreLB, "Greedy algorithm which takes the communication graph and the core-to-core latency into account. Tries to avoid too many migrations.")
+
+void MultiCoreLB::init ()
+{
+  int i, j;
+
+  lbname = (char *)"MultiCoreLB";
+  alpha = _lb_args.alpha ();
+
+  na_init ();
+
+  
+  if (CkMyPe () == 0)
+    {
+      CkPrintf ("[%d] MultiCoreLB starting\n", CkMyPe ());
+      ncores = na_get_maxcpus();
+      nnodes = na_get_maxnodes();
+
+      //++++++++++++++Debug
+      if (_lb_args.debug () > 1) 
+	CkPrintf("[%d] CPUs = %d\t Nodes = %d\n", CkMyPe (), ncores, nnodes);
+      //++++++++++++++Debug end
+
+      /* Core to Node correspondance array. */
+      cpusToNodes = new int [ncores];
+      for (i = 0; i < ncores; i++)
+	cpusToNodes[i] = na_get_nodeidcpu (i);
+
+      /* Core-to-core factor square matrix. */
+      MultiCoreFactorMatrix = new double*[ncores];
+	for(i=0;i<ncores;i++)
+	  MultiCoreFactorMatrix[i] = new double[ncores];
+      na_fill_multicore_latency_matrix(MultiCoreFactorMatrix);
+
+      //++++++++++++++Debug
+      if (_lb_args.debug () > 2) 
+	{
+	  for (i = 0; i < ncores; i++)
+	    {
+	      for (j = 0; j < ncores; j++)
+		CkPrintf ("%.2f ", MultiCoreFactorMatrix[i][j]);
+	      CkPrintf("\n");
+	    }
+	  
+	  for (i = 0; i < ncores; i++)
+	    CkPrintf ("CPU %d -> Node %d\n", i, cpusToNodes[i]);
+	}
+      //++++++++++++++Debug end
+   
+   }
+}
+
+
+MultiCoreLB::MultiCoreLB(const CkLBOptions &opt): CentralLB(opt)
+{
+    init();
+    if (CkMyPe() == 0)
+	CkPrintf("[%d] MultiCoreLB created\n",CkMyPe());
+}
+
+MultiCoreLB::MultiCoreLB(CkMigrateMessage *m):CentralLB(m) {
+    init();
+}
+
+CmiBool MultiCoreLB::QueryBalanceNow(int _step)
+{
+    //  CkPrintf("[%d] Balancing on step %d\n",CkMyPe(),_step);
+    return CmiTrue;
+}
+
+
+void MultiCoreLB::work(LDStats *stats) {
+  int i, j,obj, vert,proc, comm, node, chare;
+	double weight,commCost;
+
+
+    	if (_lb_args.debug()) CkPrintf("[%d] In MultiCoreLB strategy\n",CkMyPe());
+
+  	/** ========================== INITIALIZATION ============================= */
+  	ProcArray *parr = new ProcArray( stats );       // Processor Array
+  	ObjGraph *ogr = new ObjGraph( stats );          // Object Graph
+	std::vector < Vertex > loads (ogr->vertices);
+
+        if(_lb_args.debug()){
+                allStats(parr,ogr);
+	}
+
+	//updating the chare processor
+	for(obj=0;obj<ogr->vertices.size();obj++)
+		 ogr->vertices[obj].setNewPe(ogr->vertices[obj].getCurrentPe());
+	      
+
+	//Computing the total load of a processor: Computation + Communication - Overhead 
+	for(i=0;i<parr->procs.size();i++){
+                commCost = 0.0;
+		//iterates through all chares of Processor i
+		for(vert=0; vert < ogr->vertices.size(); vert++)
+  		{   
+                  //retrieve the id for the object
+  	         if(ogr->vertices[vert].getCurrentPe() == parr->procs[i].getProcId()){
+	         
+                            //computing communication overhead
+			    for( comm=0 ; comm<ogr->vertices[vert].sendToList.size() ; comm++ ){
+				int ngb_id = ogr->vertices[vert].sendToList[comm].getNeighborId(); //neighbor's id
+				int ngb_proc = ogr->vertices[ngb_id].getNewPe(); //neighbor's processor
+				commCost += ogr->vertices[vert].sendToList[comm].getNumMsgs() *
+					( MultiCoreFactorMatrix[parr->procs[i].getProcId()][ngb_proc] );	// communication
+			     }	//end for comm
+		       }
+	     	}//end for chares	 
+		parr->procs[i].setTotalLoad(parr->procs[i].getTotalLoad()-parr->procs[i].getOverhead()+(commCost*1e-9));
+	}//end for total load	
+
+         if (_lb_args.debug()==4) 
+	   for( proc=0 ; proc<parr->procs.size() ; proc++)
+                CkPrintf("Processor %d - load %f\n",parr->procs[proc].getProcId(),parr->procs[proc].getTotalLoad());
+       
+	//computes chares Load: computation + comm
+	for( i=0; i < ogr->vertices.size();i++){
+		commCost = 0.0 ;
+	         for( comm=0 ; comm<ogr->vertices[i].sendToList.size() ; comm++ ){
+				int ngb_id = ogr->vertices[i].sendToList[comm].getNeighborId(); //neighbor's id
+				int ngb_proc = ogr->vertices[ngb_id].getNewPe(); //neighbor's processor
+				commCost += ogr->vertices[i].sendToList[comm].getNumMsgs() *
+					( MultiCoreFactorMatrix[ogr->vertices[i].getNewPe()][ngb_proc] );	// communication
+		 }	//end for comm
+	
+		loads[i].setVertexLoad(loads[i].getVertexLoad()+(commCost*1e-9));
+        }//end for chares	
+ 
+	if (_lb_args.debug()==4) 
+	   for( vert=0 ; vert<loads.size() ; vert++)
+              if(loads[vert].isMigratable())
+		   CkPrintf("Chare %d - load %f - proc %d\n",loads[vert].getVertexId(),loads[vert].getVertexLoad(),ogr->vertices[loads[vert].getVertexId()].getNewPe()); 
+
+	// min heap of objects
+	std::sort(loads.begin(), loads.end(), ObjLoadGreater());
+	// max heap of processors
+	double max=0.0,min=FLT_MAX;
+	int minIndex=0,maxIndex=0;
+	for (i=0;i<parr->procs.size();i++){
+		if (max < parr->procs[i].getTotalLoad()){
+			max = parr->procs[i].getTotalLoad();
+			maxIndex = i;
+		}	
+		if (min > parr->procs[i].getTotalLoad()){
+			min = parr->procs[i].getTotalLoad();
+			minIndex = i;	
+		}
+	}	
+
+
+	/** ============================= STRATEGY ================================ */
+	// Obj.: Min (MAX(t(i))
+        /* N = number of processors
+         * K = number of chares
+         * i,j = processors
+         * k = chare
+         * L(i) = load on processor i
+         * NF(i,j) = Memory Factor from i to j
+         * M(k,i) = number of msg that chare k communicates with chares on processor i
+         * T(i) = L(i) + Comm(i)
+         *
+         * Comm(i) = sum of j=1..N where j!=i (M(k,j)*NF(j,i))
+         */
+
+        ProcInfo pCurrent, p;
+         pCurrent = p = parr->procs[maxIndex];
+        double oldLoad = p.getTotalLoad();
+        double currentLoad = oldLoad;
+	double currentProcLoad = 0.0,lostLoad = 0.0;
+	proc = p.getProcId(); 
+
+        if (_lb_args.debug()>2) CkPrintf("Processor Overloaded %d - load %2.9f\n",proc,p.getTotalLoad());
+
+ 
+//iterates through all chares while not MIN the current makespan 	
+  for(i=0; i < ogr->vertices.size() && proc != -1 ; i++)
+  {   
+      proc = -1;
+      
+        //get Chare
+	vert = loads[i].getVertexId();
+
+        //retrieve the id for the object
+  	if(ogr->vertices[vert].getCurrentPe() == p.getProcId() && ogr->vertices[vert].isMigratable()){
+	    if( _lb_args.debug()>2) CkPrintf("Chare %d Load %f\n",ogr->vertices[vert].getVertexId(),loads[i].getVertexLoad());
+
+		   //Only perform comm for chares of Processors different of p
+		   if(parr->procs[minIndex].getProcId() != ogr->vertices[vert].getCurrentPe()){
+			    weight = 0.0;
+			     
+                            //computing communication overhead
+			    for( comm=0 ; comm<ogr->vertices[vert].sendToList.size() ; comm++ ){
+				int ngb_id = ogr->vertices[vert].sendToList[comm].getNeighborId(); //neighbor's id
+				int ngb_proc = ogr->vertices[ngb_id].getNewPe(); //neighbor's processor
+				weight += ogr->vertices[vert].sendToList[comm].getNumMsgs() *
+					( MultiCoreFactorMatrix[minIndex][ngb_proc] );	// communication
+			     }	//end for comm
+
+			    //update new load 
+			    lostLoad = 0.0;
+	                    currentLoad = parr->procs[minIndex].getTotalLoad() + ogr->vertices[vert].getVertexLoad() + (weight*1e-9);  
+			    lostLoad = ogr->vertices[vert].getVertexLoad() + (weight*1e-9);
+			    
+			    if( _lb_args.debug()>2 ) 
+				  CkPrintf("Current load %2.12f Min proc %d \n",currentLoad,parr->procs[minIndex].getProcId());//p.getProcId());
+
+			     
+			    //verifiy if new load is better than the old one	    
+			   if(currentLoad < oldLoad)
+			   {    
+				//verify all other processors each has some comm with vert 
+				for (j=0;j<parr->procs.size();j++){
+				    currentProcLoad = 0.0 ;
+				    if(parr->procs[j].getProcId() != parr->procs[maxIndex].getProcId() && 
+					parr->procs[j].getProcId() != parr->procs[minIndex].getProcId()){	
+			        	for( comm=0 ; comm<ogr->vertices[vert].sendToList.size() ; comm++ ){
+				  		int ngb_id = ogr->vertices[vert].sendToList[comm].getNeighborId(); //neighbor's id
+				  		int ngb_proc = ogr->vertices[ngb_id].getNewPe(); //neighbor's processor
+				  		weight += ogr->vertices[vert].sendToList[comm].getNumMsgs() *
+						( MultiCoreFactorMatrix[parr->procs[j].getProcId()][ngb_proc] );	// communication
+			        	}	//end for comm
+				
+					currentProcLoad = parr->procs[j].getTotalLoad() + (weight*1e-9);
+                                        if( _lb_args.debug()>2 )    	
+				          CkPrintf("OLD %2.12f Current load %2.12f PROC %d \n",oldLoad,currentProcLoad,parr->procs[j].getProcId());
+                                     }//end if not MAX Proc
+			     		if(currentProcLoad > oldLoad)//Min Heavest Proc, but other P becomes heavest
+			          		proc = maxIndex;
+		 			else
+					{ proc = minIndex ; chare = vert; }//oldLoad = currentLoad;}
+
+	                         if( _lb_args.debug()>2 ) 
+				  CkPrintf("Current load %2.12f Selected Proc %d \n",currentLoad,parr->procs[proc].getProcId());
+				}//end for all processors
+			     }
+                    }
+	    }
+           else { proc = maxIndex;}	 
+
+   if(proc != -1 && parr->procs[proc].getProcId() != p.getProcId()){
+    	//if we found a new processor for the chare
+   	if (_lb_args.debug()>2) CkPrintf("Old Proc %d New Proc %d\n",p.getProcId(),parr->procs[proc].getProcId());
+   
+	//Update Load of maxIndex and minIndex
+   	parr->procs[maxIndex].setTotalLoad(p.getTotalLoad() - lostLoad);
+   	parr->procs[proc].setTotalLoad( parr->procs[proc].getTotalLoad() + lostLoad);
+
+	//update chare processor
+   	ogr->vertices[chare].setNewPe(proc);
+	std::vector < Vertex > loads (ogr->vertices);
+
+	//Update all other processors
+       	for (j=0;j<parr->procs.size() && proc != maxIndex;j++){
+	    if(parr->procs[j].getProcId() != parr->procs[maxIndex].getProcId() && 
+		parr->procs[j].getProcId() != parr->procs[proc].getProcId()){	
+        	for( comm=0 ; comm<ogr->vertices[chare].sendToList.size() ; comm++ ){
+	  		int ngb_id = ogr->vertices[chare].sendToList[comm].getNeighborId(); //neighbor's id
+	  		int ngb_proc = ogr->vertices[ngb_id].getNewPe(); //neighbor's processor
+	  		weight += ogr->vertices[chare].sendToList[comm].getNumMsgs() *
+			( MultiCoreFactorMatrix[parr->procs[j].getProcId()][ngb_proc] );	// communication
+	       	}	//end for comm
+				
+	     currentProcLoad = parr->procs[j].getTotalLoad() + (weight*1e-9);
+	     parr->procs[j].setTotalLoad(currentProcLoad);
+           }//end if not MAX MIN Proc
+	}
+
+	//computes chares Load: computation + comm
+	for( j=0; j < ogr->vertices.size();j++){
+		commCost = 0.0 ;
+	         for( comm=0 ; comm<ogr->vertices[j].sendToList.size() ; comm++ ){
+				int ngb_id = ogr->vertices[j].sendToList[comm].getNeighborId(); //neighbor's id
+				int ngb_proc = ogr->vertices[ngb_id].getNewPe(); //neighbor's processor
+				commCost += ogr->vertices[j].sendToList[comm].getNumMsgs() *
+					( MultiCoreFactorMatrix[ogr->vertices[j].getNewPe()][ngb_proc] );	// communication
+		 }	//end for comm
+	
+		loads[j].setVertexLoad(loads[j].getVertexLoad()+(commCost*1e-9));
+        }//end for chares	
+
+	// min heap of objects
+	std::sort(loads.begin(), loads.end(), ObjLoadGreater());
+        
+	if (_lb_args.debug()==4) 
+	   for( proc=0 ; proc<parr->procs.size() ; proc++)
+                CkPrintf("Processor %d - load %f\n",parr->procs[proc].getProcId(),parr->procs[proc].getTotalLoad());
+       
+	if (_lb_args.debug()==4) 
+	   for( vert=0 ; vert<loads.size() ; vert++)
+        	if(loads[vert].isMigratable())
+	   	   CkPrintf("Chare %d - load %f - proc %d\n",loads[vert].getVertexId(),loads[vert].getVertexLoad(),ogr->vertices[loads[vert].getVertexId()].getNewPe()); 
+
+	max=0.0,min=FLT_MAX;
+	minIndex=0,maxIndex=0;
+	for (j=0;j<parr->procs.size();j++){
+		if (max < parr->procs[j].getTotalLoad()){
+			max = parr->procs[j].getTotalLoad();
+			maxIndex = j;
+		}	
+		if (min > parr->procs[j].getTotalLoad()){
+			min = parr->procs[j].getTotalLoad();
+			minIndex = j;	
+		}
+	}
+
+    	p = parr->procs[maxIndex];
+    	oldLoad = p.getTotalLoad();
+   	currentLoad = oldLoad;
+    	proc = p.getProcId(); 
+	i=-1;
+    	if (_lb_args.debug()>2) CkPrintf("Processor Overloaded %d - load %f\n",proc,p.getTotalLoad());
+  }
+} 
+	/** ============================== CLEANUP ================================ */
+  	ogr->convertDecisions(stats);         // Send decisions back to LDStats	
+}
+
+#include "MultiCoreLB.def.h"
+
+/*@}*/
+

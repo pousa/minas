@@ -1,0 +1,74 @@
+#!/bin/sh
+source ../config/arch.def
+exec sys/arch.sh
+
+SHELL=/bin/sh
+SPATH=$1
+
+#platform information
+. $PATHMINAS/MApp/sys/arch.sh
+
+MAPP=$PATHMINAS/MApp/
+MAI=$PATHMINAS/MAi-array/include
+
+if [ $# -lt 0 ];then
+ $SHELL sys/header
+
+else
+
+FOLDER=`dirname $SPATH`
+SOURCE=`basename $SPATH`
+
+cd ${MAPP}bin/
+
+###############################PARSING APP SOURCE CODE####################
+RESP=echo $SPATH |awk -F . '{print $NF}'
+case $RESP in 
+	"c"|"cc"|"cpp" )
+		./cuia $SPATH > variables.minas
+	;;
+
+	"f"|"f90" )
+		./parserf $SPATH > variables.minas
+	;;
+
+	* )
+	  	 echo "File format not supported"
+	;;	
+esac
+
+##################################MAIN FILE NAME###########################
+MAIN=awk '/'main'/ {print $NF}' variables.minas | tr -d \'
+MAINF=`basename $MAIN`
+
+##############################CACHE SIZE###################################
+let LCACHE=`ls -d /sys/devices/system/cpu/cpu0/cache/index[0-9]* | wc -l`-1
+SCACHE=`cat /sys/devices/system/cpu/cpu0/cache/index$LCACHE/size | tr -d 'K'`
+
+##############################FILTER VARIABLES###############################################
+cat variables.minas | awk '/.*(ARRAY_DIM|ARRAY_MAL).*(global|main).*/ {print $0}' > ${MAPP}bin/telegible.minas
+
+case $ARCH in
+	"-DX86_64_ARCH"|"-DA64_ARCH" ) 	FILE="X86_64"
+	"-DX86_ARCH" ) FILE="X86"
+	* ) echo "Architecture not supported"
+
+./elegible.py ${MAPP}bin/$FILE  $SCACHE ${MAPP}bin/telegible.minas > ${MAPP}bin/elegible.minas
+
+##################################TRANSFORMING CODE################################
+case $RESP in 
+	"c"|"cc"|"cpp" )
+		./transform_c.py ${MAPP}bin/elegible.minas $FOLDER $MAINF mai_$SOURCE $NF $NLINKS
+	;;
+
+	"f"|"f90" )
+		./transform_f.py ${MAPP}bin/elegible.minas $FOLDER $MAINF mai_$SOURCE $NF $NLINKS
+	;;
+
+	* )
+	  	 echo "File format not supported"
+	;;	
+esac
+
+cd ${MAPP}
+fi 

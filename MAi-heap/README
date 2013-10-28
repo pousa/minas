@@ -1,0 +1,46 @@
+Memory Affinity interface - MAi-heap
+
+ The mai-heap library enhance common dynamic allocator with NUMA features.
+ Those allocators allow to make allocation on physical NUMA nodes considering a set of possible memory policies.
+ The memory policy used to place data on physical NUMA nodes is selected considering the type of heap.
+ There are four types of heap: local_heap, read_heap for read only variables, write_heap for write only variables and
+ rw_heap for read and write variables. 
+ On every type of heap the allocated area, called heap, can then be deleted, moved of merged with other ones.
+
+Requirements
+	It need the libnuma library.
+	It need the pthread library.
+	MAi-heap only supports shared memory parallel programming model.
+
+MAi-heap is not
+        Guaranteed to make the most efficient use of shared memory when nested parallel sections are used.
+	Designed to support other operating systems than Linux.
+
+Compiling
+	To compile just tape 'make' at the top directory.
+	The makefile will create a static library named 'libnumaheap' in the lib directory.
+
+How to use mai-heap
+	You may call the differents malloc functions in your codes and link with the libnumaheap library.
+
+Overall of functionnalities
+	
+	This paragrah summarize the functionnalities of each functions.
+
+	This library manage list of heaps with a double link.
+	The first link is used to link each heap as a normal linked list.
+	The second link attached only heap with the same mapping data.
+	All the data needed to manage heaps or lists of heaps are include in the heap, such library does not used global variables.
+
+	Data Allocation:
+	mai_*malloc/mai_*calloc/mai_*realloc: allocate an zone mapped on NUMA nodes, a heap is created if needed.
+	mai_*free: free allocated memory
+        where * is l=local,r=read,w=write or rw=read write variable 
+	
+Copyright
+	MAi-heap is developped by the french INRIA institut and under the GNU Public License v.2
+	
+	main contributors: 
+	Dr. Maxime Martinasso, LIG - INRIA
+
+	Dr. Christiane Pousa Ribeiro, LIG - INRIA

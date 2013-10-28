@@ -1,0 +1,8 @@
+'xux' ARRAY 'int' 2 1024 10 'global' 'test_incl.c' 
+'len' ARRAY 'float' 2 100 200 'global' 'incl2.h' 
+'vel' ARRAY 'double' 3 20 100 100 'global' 'incl1.h' 
+'b' ARRAY 'float' 1 10 'global' 'incl1.h' 
+'nrom' ARRAY 'double' 1 20 'global' 'incl1.h' 
+'acl' ARRAY 'double' 1 1024 'global' 'incl2.h' 
+'sum' ARRAY 'double' 1 1024 'global' 'test_incl.c' 
+'tem' ARRAY 'double' 2 20 100 'global' 'incl1.h'  

@@ -1,0 +1,132 @@
+Memory Affinity interface - MAi-array
+
+The Memory Affinity Interface allows developers to manage memory affinity in NUMA architectures in an simple way. 
+The main objective of this Interface is to deal with memory/threads placement using some defined functions.
+These functions make possible to place memory in defined nodes (memory blocks) and also to migrate memory to garatee memory affinity. 
+
+MAi-array is array oriented, all memory allocation/placement functions have been designed to VERY LARGE arrays.
+MAi-array has two types of memory policies,  automatic and manually one. In automatic memory policies, data placement is done
+automatically by MAi-array using the nodes selected by MAi-array. In manually memory policies, programmers have to specify nodes where data 
+will be placed.
+
+Thread/Process migrations is also allowed in this Interface.
+There are also some functions to display informations (statistcs) about application memory.
+ 
+Requirements
+	MAi-array need the libnuma Interface.
+	Note that MAi-array assumes only one application running on the machine.
+        NUMA machine must have memory free on each node. Otherwise you will get errors on memory policies. 
+	MAi-array only supports shared memory parallel programming model. However, it is more suited for OpenMP programs.
+	Memory policies must be applied by the MASTER thread. 
+
+MAi-array is not
+	Designed to perform data allocation in parallel.
+        Guaranteed to make the most efficient use of shared memory when nested parallel sections are used.
+	Designed to support other operating systems than Linux.
+
+Compiling
+	To compile just tape 'make all' at the top directory.
+	The makefile will create a static library named 'libmai' in the lib directory.
+
+How to use MAi-array
+	To use MAi-array programmers have to call MAi-array functions in the application source code (C, C++ and Fortran) and link with libmai
+	If you want to specify nodes|cpus|cores in which data and threads will be placed you can use a configuration file. The format of this file is:
+	total number of nodes 
+	nodes id (each node id in a line)
+	total number of threads
+	cpus/cores id (each cpu/core id in a line)
+
+Overall of functionnalities
+
++++++++++++++++++++++++++++++++++++++ Automatic Memory policies
+Interleave memory policies:
+void mai_cyclic(void *p);
+void mai_skew_mapp(void *p);
+void mai_prime_mapp(void *p,int prime);
+void mai_cyclic_block(void *p,int block);
+void mai_skew_mapp_block(void *p,int block);
+void mai_prime_mapp_block(void *p,int prime,int block);
+
+Block = rows, colunms or plans
+
+Bind memory policies:
+void mai_bind_all(void *p);
+void mai_bind_block(void *p);
+void mai_ibind_block(void *p, int block);
+
+Random memory policies:
+void mai_random_all(void *p);
+void mai_random_block(void *p);
+void mai_random_block(void *p, int block);
+
++++++++++++++++++++++++++++++++++++++ Manualley Memory policies
+Interleave memory policies:
+void mai_cyclic(void *p,int nnodes,int *nodes);
+void mai_skew_mapp(void *p,int nnodes,int *nodes);
+void mai_prime_mapp(void *p,int prime,int nnodes,int *nodes);
+void mai_cyclic_block(void *p,int block,int nnodes,int *nodes);
+void mai_skew_mapp_block(void *p,int block,int nnodes,int *nodes);
+void mai_prime_mapp_block(void *p,int prime,int block,int nnodes,int *nodes);
+
+Block = rows, colunms or plans
+
+Bind memory policies:
+void mai_bind_all(void *p,int nnodes,int *nodes);
+void mai_bind_block(void *p,int nnodes,int *nodes);
+void mai_ibind_block(void *p, int block,int nnodes,int *nodes);
+
+Random memory policies:
+void mai_random_all(void *p,int nnodes,int *nodes);
+void mai_random_block(void *p,int nnodes,int *nodes);
+void mai_random_block(void *p, int block,int nnodes,int *nodes);
+
++++++++++++++++++++++++++++++++++++++ Migration Memory policies
+Memory Migration:
+void mai_migrate_rows(void *p,unsigned long node,int nr, int start);
+void mai_migrate_columns(void *p,unsigned long node,int nc, int start);
+void mai_migrate_scatter(void *p,unsigned long nodes);
+void mai_migrate_gather(void *p,unsigned long node);
+
+
++++++++++++++++++++++++++++++++++++++ Other functions
+Thread placement:
+void bind_threads();
+void migrate_thread(pid_t id,unsigned long cpu);
+
+Statistics:
+Page information - function prototype
+void print_pagenodes(unsigned long *pageaddrs,int size);
+int number_page_migration(unsigned long *pageaddrs,int size);
+double get_time_pmigration();
+
+Thread information:
+void print_threadcpus();
+int number_thread_migration(unsigned int *threads,int size);
+double get_time_tmigration();
+
+Array blocks:
+void mai_subarray(void *p,int dim[]);
+void mai_bytes(void* p,size_t bytes);
+
+Data distribution:
+int mai_regularbind(void *p);
+int mai_irregularbind(void *p,size_t bytes,int node);
+
+Architecture information:
+void mai_nodes(unsigned long nnodes, int *nodes);
+double mai_nodebandwidth(int node);
+double mai_numafactor(int node1, int node2);
+double mai_bandwidth(int node1, int node2);
+int mai_get_maxnodes();
+int mai_get_maxcpus();
+int mai_get_ncpusnode();
+int* mai_get_cpusnode(int nodeid);
+
+Copyright
+	MAi-array is developped by the french INRIA institut and under the GNU Public License v.2
+	
+	main contributor: 
+	Christiane Pousa Ribeiro, LIG - INRIA
+	pousa@imag.fr
+
+

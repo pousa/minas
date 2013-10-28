@@ -1,0 +1,9 @@
+signed char	1
+unsigned char	1
+char	1
+short	4
+unsigned short	4
+int	8
+unsigned long	16
+float	8
+double	16

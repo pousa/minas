@@ -1,0 +1,64 @@
+#!/bin/bash
+. config/vars.def
+
+if [ ! -d "/sys/devices/system/node/node1" ]; then
+  echo "INFO: NUMA Machine not detected!"
+  exit -1;
+fi
+
+##################################PATHMINAS
+PATHMINAS="$(pwd)"
+export PATHMINAS;
+export NLINKS;
+#########################################
+
+#sysfs
+SYSFS_CPU="/sys/devices/system/cpu"
+SYSFS_NODE="/sys/devices/system/node"
+####################################################################
+#number of nodes and cpus
+NODE_POSSIBLE_COUNT=`ls -1d ${SYSFS_NODE}/node[0-9]* | wc -l`;
+CPU_POSSIBLE_COUNT=`ls -d ${SYSFS_CPU}/cpu[0-9]* | wc -l`;
+NODE_CPUS=`ls -d ${SYSFS_NODE}/node0/cpu[0-9]* | wc -l`;
+LLC=`ls -d ${SYSFS_CPU}/cpu0/cache/index[0-9]* | wc -l`;
+let LLC=$LLC-1;
+L1=`cat ${SYSFS_CPU}/cpu0/cache/index0/size | tr -d 'K'` 
+MEM=`awk '/MemTotal/ {print $4}' ${SYSFS_NODE}/node0/meminfo`
+FREQ=`cat /proc/cpuinfo | grep 'cpu MHz' | head -n 1 | awk '{print $4}'`;
+
+for((i=0;i<$CPU_POSSIBLE_COUNT;i++)); do cpu=`cat /sys/devices/system/cpu/cpu${i}/topology/physical_package_id`;  if [ $cpu -eq 0 ];  then let MAXCORESSOCKET=$MAXCORESSOCKET+1;  fi; done; 
+
+NODE_CPUIDS=""; for i in `ls -d /sys/devices/system/node/node0/cpu[0-9]*`; do NODE_CPUIDS=$NODE_CPUIDS" `basename $i | sed s/cpu//`"; done; PACKAGE_COUNT=1; j=0; for i in ${NODE_CPUIDS}; do let j=$j+1; p=`cat /sys/devices/system/cpu/cpu${i}/topology/physical_package_id`; PACKAGE[${p}]+="${j}"; if [ ${PACKAGE_COUNT} -lt $((${p}+1)) ]; then  let PACKAGE_COUNT=$((${p}+1)) ; fi; done;
+
+let MAXSOCKETS=$CPU_POSSIBLE_COUNT/$MAXCORESSOCKET;
+
+NSHARED=`cat ${SYSFS_CPU}/cpu0/cache/index${LLC}/shared_cpu_list | awk -F, '{print NF-1}'`;
+
+echo -e "#ifndef __ARCHTOPO_H\n#define __ARCHTOPO_H\n#ifdef __cplusplus
+\nextern \"C\" {\n#endif" > ${PATHMINAS}/numArch/include/archTopo.h
+echo -e "\n #define ISNUMA 1" >> ${PATHMINAS}/numArch/include/archTopo.h
+echo -e "\n #define SHAREDCACHE $NSHARED" >> ${PATHMINAS}/numArch/include/archTopo.h
+echo -e "\n #define MAXNODES $NODE_POSSIBLE_COUNT" >> ${PATHMINAS}/numArch/include/archTopo.h
+echo -e "\n #define MAXCPUS $CPU_POSSIBLE_COUNT" >> ${PATHMINAS}/numArch/include/archTopo.h
+echo -e "\n #define CPUSNODE $NODE_CPUS" >> ${PATHMINAS}/numArch/include/archTopo.h
+echo -e "\n #define LLC $LLC" >> ${PATHMINAS}/numArch/include/archTopo.h
+echo -e "\n #define L1CACHE $L1" >> ${PATHMINAS}/numArch/include/archTopo.h
+echo -e "\n #define TOTALMEM $MEM" >> ${PATHMINAS}/numArch/include/archTopo.h
+echo -e "\n #define MAXSOCKETS $MAXSOCKETS" >> ${PATHMINAS}/numArch/include/archTopo.h
+echo -e "\n #define SOCKETSNODE $PACKAGE_COUNT" >> ${PATHMINAS}/numArch/include/archTopo.h
+echo -e "\n #define FREQ $FREQ" >> ${PATHMINAS}/numArch/include/archTopo.h
+echo -e "\n #define MAXCORESSOCKET $MAXCORESSOCKET" >> ${PATHMINAS}/numArch/include/archTopo.h
+echo -e "\n #define NLINKS $NLINKS" >> ${PATHMINAS}/numArch/include/archTopo.h
+
+echo -e "#ifdef __cplusplus\n}\n#endif\n#endif" >> ${PATHMINAS}/numArch/include/archTopo.h
+
+make 
+
+if [ -d "/tmp/output/" ]; then
+  rm -rf /tmp/output;
+  rm -rf ${PATHMINAS}/numArch/output/
+fi
+$PATHMINAS/numArch/topology.sh
+cd $PATHMINAS
+
+echo "Minas is installed!"

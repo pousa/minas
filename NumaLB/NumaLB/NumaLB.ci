@@ -1,0 +1,9 @@
+module NumaLB {
+
+extern module CentralLB;
+initnode void lbinit(void);
+group [migratable] NumaLB : CentralLB {
+  entry void NumaLB(const CkLBOptions &);  
+};
+
+};

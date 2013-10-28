@@ -1,0 +1,9 @@
+module MultiCoreLB {
+
+extern module CentralLB;
+initnode void lbinit(void);
+group [migratable] MultiCoreLB : CentralLB {
+  entry void MultiCoreLB(const CkLBOptions &);  
+};
+
+};

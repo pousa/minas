@@ -1,0 +1,17 @@
+In this folder there are six examples of how use MAi interface. The examples cover the utilization of the majority of MAi functions.
+
+test_struct: is an example with arrays of structs and how to use MAi with this type of variables. In this examples some memory policies are used.
+test_threads: is a more complete example with more operations.
+test_mempol: is an example of how use MAi interface to construct our own memory policy.
+jacobi: is jacobi problem implemented with posix threads.
+
+test_fortran: simple example of hwo to use MAi in fortran
+test_fomp: an example of MAi usage with OpenMP and fortran 
+
+To execute the examples you just have to compile them and link with libmai. 
+After the compilation, to run the examples you can use configuration files to specify nodes/cpu/cores that you want to use to execute the application. Some configuration files examples is also in the folder. If you do not want to specify nodes/cpu/cores MAi will select them for you.
+
+conf2.cf - use two nodes and two cpus/cores
+conf8.cf - use eight nodes and eight cpus/cores
+
+Any problems, contact: pousa@imag.fr

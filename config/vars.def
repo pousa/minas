@@ -1,0 +1,13 @@
+##################################COMPILER
+CC=gcc -O2 -fopenmp
+FF=gfortran
+
+##################################ARCHITECTURE
+ARCH=-DX86_64_ARCH
+NLINKS=3
+
+###############################LIBRARIES
+LIBNUMA=-lnuma
+LIBTHREAD=-lpthread
+LIBNCURSES=-lncurses
+LIBMATH=-lm

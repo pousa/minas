@@ -1,0 +1,28 @@
+Memory Affinity preprocessor - MApp
+
+The Memory Affinity preprocessor allows developers to automatically optimize memory affinity in theirs applications. 
+All optimizations made by MApp considers NUMA platforms as target architecture.
+The main objective of this preprocessor is to deal with memory placement using MAi interface in a transparent and simple way. 
+MApp make optimizations of memory placement using the source code of the application and generate a preprocessed code
+as output of the optimization process. All memory affinity optmizations are made for glogal and large arrays. The large
+concept is defined before use MApp in a configuration file.
+ 
+Requirements
+	MApp need the libmai Interface.
+
+Compiling
+	To compile just tape 'make' at the top directory.
+	The makefile will generate and install mapp in the MApp/bin/ directory.
+
+How to use MApp
+	To use MApp programmers have to pre-compile your source code with MApp
+        Mapp [option] [FILE].c
+        Then compile the transformed code with any compiler
+
+Copyright
+	MApp is developped by the french INRIA institut and under the GNU Public License v.2
+	
+	main contributor: 
+	Christiane Pousa Ribeiro, LIG - INRIA
+	pousa@imag.fr
+

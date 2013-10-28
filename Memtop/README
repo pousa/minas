@@ -1,0 +1,37 @@
+ 
+ Memtop is a tools displaying the memory usage among NUMA nodes of variable of a program.
+ 
+0 - Requirements
+	Memtop need the libnuma library.
+	Memtop need the ncurses library.
+	Memtop need the pthread library.
+
+1 - Compiling
+	To compile just tape 'make' at the top directory.
+	The makefile will create a static library named 'libmemon' in the lib directory and a binary named 'memtop' in the bin directory.
+
+2 - How to use memtop
+	First you need to call in the targeted programs the methods of the libmemon library.
+	You need to call init_memon() before any others methods of the library and finalize_memon()
+	to finalize the use of memtop.
+	To see the memory mapping of some variables you can use the method attach_memory() and detach_memory().
+	Then, you just need to link your programs with the libmemon library.
+
+	To display the memory usage and mapping of attached variables you must launch memtop binary.
+	Be aware to start it before to launch your targeted programs.
+
+ 	The information displayed by memtop for each varaible:
+	- memory policy associated with the variable (from HeapAlloc or MAi)
+	- physical and virtual memory consumption 
+	- memory mapping among nodes
+
+3 - Copyright
+	memtop and libmemon are developped by the french INRIA institut and under the GNU Public License v.2
+	
+	main contributor: 
+	Dr. Maxime Martinasso, LIG - INRIA
+	maxime.martinasso@imag.fr
+
+	Other contributors:
+	Christiane Pousa Ribeiro
+	pousa@imag.fr
